@@ -1,6 +1,41 @@
-﻿namespace GhostIM.MSIM;
+﻿using System.Text;
+using GhostIM.Utility;
 
-public class MSIMPacket
+namespace GhostIM.MSIM;
+
+public static class MSIMPacket
 {
-    
+    public static void SendPacket(TcpServer srv, string packet)
+    {
+        byte[] packetBytes = Encoding.ASCII.GetBytes(packet);
+        
+        srv.WriteTraffic(packetBytes, 0, packetBytes.Length);
+        if (Server.debugmode)
+            Logger.write("MSIM Debug", "SendPacket | " + packet);
+    }
+
+    public static void RecvPacket(MSIMClient client, TcpServer srv)
+    {
+        var traffic = srv.ReadTraffic();
+        string decodedPacket = Encoding.ASCII.GetString(traffic.Item1, 0, traffic.Item2);
+
+        if (decodedPacket != "")
+        {
+           if (Server.debugmode)
+               Logger.write("MSIM Debug", "RecvPacket | " + decodedPacket);
+            /*
+             * respond to packet
+             */
+
+            if (decodedPacket.StartsWith("\\logout"))
+                client.logout = true;
+        }
+    }
+
+    public static bool Logout(MSIMClient client)
+    {
+        if (client.logout)
+            return true;
+        return false;
+    }
 }

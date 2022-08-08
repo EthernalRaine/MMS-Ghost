@@ -1,8 +1,19 @@
-﻿namespace GhostIM 
+﻿using GhostIM.MSIM;
+using GhostIM.Utility;
+
+namespace GhostIM 
 {
-    class Main
+    static class Entry
     {
-        internal static void Main
+        internal static void Main()
+        {
+            Logger.write("Entry", "Loading GhostIM Server");
+            new Thread(() =>
+            {
+                Logger.write("MySpaceIM Server", "Initializing Server");
+                Server.msimServer();
+            }).Start();
+        }
             
     }
 }
