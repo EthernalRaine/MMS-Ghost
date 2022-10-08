@@ -1,23 +1,38 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
-using System.Text;
+using System.Timers;
 using GhostIM.Utility;
-using MySql.Data.MySqlClient;
+using Org.BouncyCastle.Asn1.X509;
+using Timer = System.Timers.Timer;
 
 namespace GhostIM.MSIM;
 
-public class Server
+public static class Server
 {
     public static List<MSIMClient> clients = new List<MSIMClient>();
-    public static readonly bool debugmode = false;
+    public const bool debugmode = true;
+
+    private static async void KeepaliveFireCallback(Object source, ElapsedEventArgs e, TcpServer srv, Tuple<MSIMClient, bool> ctx)
+    {
+        if (!ctx.Item2)
+            return;
+
+        if (ctx.Item1.logout)
+            return;
+
+        try
+        {
+            MSIMPacket.SendPacket(srv, "\\ka\\\\\\final\\");
+        }
+        catch
+        {
+            // ignored
+            return;
+        }
+    } 
     
     static public void msimServer()
     {
-        const string connectCtx = @"server=localhost;userid=ghost;password=oe_FDC[]L0sYJ5eN;database=im";
-        MySqlConnection conn = new MySqlConnection(connectCtx);
-        conn.Open();
-        
         TcpServer srv = new TcpServer(IPAddress.Any, 1863); // alt port
 
         while (true) 
@@ -27,10 +42,9 @@ public class Server
             {
                 if (client.Client.RemoteEndPoint != null)
                     Logger.write("MySpaceIM Server", "Client awaiting Authentication from " + client.Client.RemoteEndPoint);
-                string response = "";
-                
+
                 /* MSIM Server
-                 * Coded by AzureDiamond
+                 * Coded by EthernalRaine/lnkexploit
                  * Copyright 2022 | ghost.im
                  */
 
@@ -38,58 +52,33 @@ public class Server
                  * Handshake Client
                  */
 
-                byte[] nonce = MSIMStructure.GenerateNonce();
-                response = "\\lc\\1\\nc\\" + Encoding.ASCII.GetString(nonce) + "\\id\\1\\final\\";
-                MSIMPacket.SendPacket(srv, response);
+                var ctx = MSIMResponse.HandshakeClient(srv, client);
+                
+                Thread.Sleep(250);
                 
                 /*
-                 * Client Structure
+                 * Launch Keepalive Timer
                  */
+                Timer t = new Timer(180000);
+                t.AutoReset = true;
+                t.Elapsed += (sender, e) => KeepaliveFireCallback(sender, e, srv, ctx);
+                t.Start();
 
-                var login2 = srv.ReadTraffic();
-                string decodedPacket = Encoding.ASCII.GetString(login2.Item1, 0, login2.Item2);
+                Thread.Sleep(2500);
                 
-                if (Server.debugmode) 
-                    Logger.write("MSIM Debug", "RecvPacket | " + decodedPacket);
-                
-                int sessionkey = MSIMStructure.GenerateSessionKey();
+                //MSIMResponse.SendBuddyMessage(MSIMBuddyMessageType.InstantMessage, ctx.Item1.userId, "<f f='Times' h='16'><c v='black'><b v='white'>hello</1b></1c></1f></1p>", ctx.Item1, srv);
 
-                string username = MSIMBuilder.Decode("username", login2.Item1);
-                var sql = new MySqlCommand("SELECT * FROM `users` WHERE `username` LIKE '" + username + "'", conn).ExecuteReader();
-                sql.Read();
-                int userid = sql.GetInt32(0);
-                string screenName = sql.GetString(3);
-
-                /*
-                 * Authenticate Client
-                 */
-                
-                response = "\\lc\\2\\sesskey\\" + sessionkey + "\\proof\\" + sessionkey +
-                           "\\userid\\" + userid + "\\profileid\\" + userid +
-                           "\\uniquenick\\" + screenName + "\\id\\1\\final\\";
-                
-                MSIMClient ctx = new MSIMClient(nonce, sessionkey, userid, client);
-                clients.Add(ctx);
-                
-                MSIMPacket.SendPacket(srv, response);
-
-                string version = MSIMBuilder.Decode("clientver", login2.Item1);
-                Logger.write("MySpaceIM Server","Client authenticated! | Screenname: " + screenName + " | Client Version: 1.0." + version + ".0");
-                
                 while (true)
                 {
                     try
                     {
-                        //  srv.WriteTraffic(new byte[] { 0 }, 0, 0);
+                        srv.WriteTraffic(new byte[] { 69 }, 0, 0);
                         Tuple<byte[], int> traffic = srv.ReadTraffic();
                         if (traffic != null) 
-                            MSIMPacket.RecvPacket(ctx, srv);
+                            MSIMPacket.RecvPacket(ctx.Item1, srv);
                         // Item1 = Byte Packets, Item2 = Packet Length
 
-                        if (!client.Connected)
-                            break;
-                        
-                        if (MSIMPacket.Logout(ctx))
+                        if (MSIMPacket.Logout(ctx.Item1))
                             break;
                     }
                     catch
@@ -101,12 +90,19 @@ public class Server
 
 
                 // Dispose
-                Logger.write("MySpaceIM Server", "Client disconnected! | Screenname: " + screenName + " | Client Version: 1.0." + version + ".0");
+                if (ctx.Item2)
+                {
+                    Logger.write("MySpaceIM Server", "Client disconnected! | Screenname: " + ctx!.Item1.screenName);
+                    clients.Remove(ctx.Item1);
+                }
+                else
+                {
+                    Logger.write("MySpaceIM Server", "Client disconnected! | Screenname: Unknown");
+                }
                 client.Dispose();
-                clients.Remove(ctx);
-                sql.Dispose();
-                sql.Close();
-                
+                t.Dispose();
+                t.Close();
+
             }).Start();
         }
     }

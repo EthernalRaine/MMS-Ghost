@@ -21,21 +21,28 @@ public static class MSIMPacket
 
         if (decodedPacket != "")
         {
-           if (Server.debugmode)
+            if (Server.debugmode)
                Logger.write("MSIM Debug", "RecvPacket | " + decodedPacket);
+            
             /*
              * respond to packet
              */
-
-            if (decodedPacket.StartsWith("\\logout"))
-                client.logout = true;
+           
+            MSIMResponse.RespondToPacket(client, srv, decodedPacket);
         }
     }
 
     public static bool Logout(MSIMClient client)
     {
-        if (client.logout)
+        try
+        {
+            if (client.logout)
+                return true;
+            return false;
+        }
+        catch
+        {
             return true;
-        return false;
+        }
     }
 }

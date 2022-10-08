@@ -1,6 +1,6 @@
 ﻿namespace GhostIM.Utility;
 
-public class Logger
+public static class Logger
 {
     public static void write(String szPrefix, String szData)
     {
